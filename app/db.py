@@ -9,6 +9,12 @@ from app.models import FunctionSubmission
 Base = declarative_base()
 
 
+from sqlalchemy import JSON
+
+
+from sqlalchemy import JSON, PickleType
+
+
 class Function(Base):
     __tablename__ = "functions"
 
@@ -17,6 +23,7 @@ class Function(Base):
     code = Column(String)
     description = Column(String)
     dependencies = Column(String, nullable=True)
+    args = Column(PickleType, nullable=True)  # Use PickleType instead of JSON
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
@@ -32,6 +39,18 @@ class Function(Base):
             self.dependencies = ",".join(dependencies)
         else:
             self.dependencies = None
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "name": self.name,
+            "code": self.code,
+            "description": self.description,
+            "dependencies": self.dependencies_list,
+            "args": dict(self.args),
+            "created_at": self.created_at,
+            "updated_at": self.updated_at,
+        }
 
 
 DATABASE_URL = "sqlite:///./sql_app.db"
@@ -56,6 +75,7 @@ def add_function(db: Session, function: FunctionSubmission) -> Function:
         return existing_function
     else:
         function = Function(**function_dict)
+
         db.add(function)
         db.commit()
         db.refresh(function)
@@ -67,58 +87,6 @@ def get_function(db: Session, name: str):
     return function
 
 
-if __name__ == "__main__":
-    from pydantic import BaseModel
-
-    class FunctionModel(BaseModel):
-        name: str
-        code: str
-        args: dict[str, str]
-        description: str
-        dependencies: list[str]
-
-    import numpy as np
-    import pandas as pd
-    from typing import List
-    from pydantic import BaseModel
-
-    class FunctionModel(BaseModel):
-        name: str
-        code: str
-        args: dict[str, str]
-        description: str
-        dependencies: List[str]
-
-    # Create a Pydantic model instance
-    function_model = FunctionModel(
-        name="my_function",
-        code="""
-        import numpy as np
-        import pandas as pd
-
-        def generate_random_dataframe(count, min_value, max_value):
-            data = pd.DataFrame({'A': np.random.uniform(min_value, max_value, count)})
-            return data
-
-        def calculate_mean(dataframe, column):
-            return np.mean(dataframe[column])
-
-        def my_function(
-            count: int,
-            min_value: float,
-            max_value: float,
-        ) -> float:
-            data = generate_random_dataframe(count, min_value, max_value)
-            mean = calculate_mean(data, 'A')
-            return mean
-        """,
-        description="A function that calculates the mean of a column in a pandas DataFrame using numpy",
-        dependencies=["numpy", "pandas"],
-        args={
-            "count": "int",
-            "min_value": "float",
-            "max_value": "float",
-        },
-    )
-
-    add_function(SessionLocal(), function_model)
+def get_all_functions(db: Session):
+    functions = db.query(Function).all()
+    return functions

@@ -1,8 +1,7 @@
-from fastapi import FastAPI, Depends, Request, Response
-from sqlalchemy.orm import Session
+from fastapi import FastAPI, Request, Response
 
 from app.models import FunctionSubmission, FunctionExecution
-from app.db import SessionLocal, add_function, get_function
+from app.db import SessionLocal, add_function, get_function, get_all_functions
 from app.exec import execute_code, install_dependencies
 
 # Create FastAPI instance
@@ -35,3 +34,11 @@ def execute_function(function: FunctionExecution, request: Request):
     fn = get_function(db, function.name)
     exec_result = execute_code(fn.code, fn.name, function.args)
     return exec_result
+
+
+@app.get("/functions/")
+def get_functions(request: Request) -> list[FunctionSubmission]:
+    db = request.state.db
+    db_fns = get_all_functions(db)
+    fns = [FunctionSubmission(**fn.to_dict()) for fn in db_fns]
+    return fns
