@@ -1,18 +1,10 @@
-from sqlalchemy import create_engine, Column, Integer, String, DateTime
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy import create_engine, Column, Integer, String, DateTime, PickleType
+from sqlalchemy.orm import sessionmaker, declarative_base, Session
 from sqlalchemy.sql import func
-from sqlalchemy.orm import declarative_base
-from sqlalchemy.orm import Session
 
 from app.models import FunctionSubmission
 
 Base = declarative_base()
-
-
-from sqlalchemy import JSON
-
-
-from sqlalchemy import JSON, PickleType
 
 
 class Function(Base):
