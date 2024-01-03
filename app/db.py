@@ -4,7 +4,7 @@ from sqlalchemy.sql import func
 from sqlalchemy.orm import declarative_base
 from sqlalchemy.orm import Session
 
-from app.models import FunctionBase
+from app.models import FunctionSubmission
 
 Base = declarative_base()
 
@@ -42,7 +42,7 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base.metadata.create_all(bind=engine)
 
 
-def add_function(db: Session, function: FunctionBase) -> Function:
+def add_function(db: Session, function: FunctionSubmission) -> Function:
     function_dict = function.model_dump()
     function_dict["dependencies_list"] = function_dict.pop("dependencies")
     existing_function = (
@@ -62,31 +62,63 @@ def add_function(db: Session, function: FunctionBase) -> Function:
         return function
 
 
+def get_function(db: Session, name: str):
+    function = db.query(Function).where(Function.name == name).first()
+    return function
+
+
 if __name__ == "__main__":
     from pydantic import BaseModel
 
     class FunctionModel(BaseModel):
         name: str
         code: str
+        args: dict[str, str]
         description: str
         dependencies: list[str]
+
+    import numpy as np
+    import pandas as pd
+    from typing import List
+    from pydantic import BaseModel
+
+    class FunctionModel(BaseModel):
+        name: str
+        code: str
+        args: dict[str, str]
+        description: str
+        dependencies: List[str]
 
     # Create a Pydantic model instance
     function_model = FunctionModel(
         name="my_function",
         code="""
-    import numpy as np
-    import pandas as pd
+        import numpy as np
+        import pandas as pd
 
-    def calculate_mean(dataframe, column):
-        return np.mean(dataframe[column])
+        def generate_random_dataframe(count, min_value, max_value):
+            data = pd.DataFrame({'A': np.random.uniform(min_value, max_value, count)})
+            return data
 
-    data = pd.DataFrame({'A': [1, 2, 3, 4, 5]})
-    mean = calculate_mean(data, 'A')
-    print('Mean of column A:', mean)
-    """,
+        def calculate_mean(dataframe, column):
+            return np.mean(dataframe[column])
+
+        def my_function(
+            count: int,
+            min_value: float,
+            max_value: float,
+        ) -> float:
+            data = generate_random_dataframe(count, min_value, max_value)
+            mean = calculate_mean(data, 'A')
+            return mean
+        """,
         description="A function that calculates the mean of a column in a pandas DataFrame using numpy",
         dependencies=["numpy", "pandas"],
+        args={
+            "count": "int",
+            "min_value": "float",
+            "max_value": "float",
+        },
     )
 
     add_function(SessionLocal(), function_model)
