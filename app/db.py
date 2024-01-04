@@ -1,84 +1,113 @@
-from sqlalchemy import create_engine, Column, Integer, String, DateTime, PickleType
-from sqlalchemy.orm import sessionmaker, declarative_base, Session
-from sqlalchemy.sql import func
+# System imports
+import os
+import datetime
+import shelve
 
-from app.models import FunctionSubmission
+# Third-party imports
+from dotenv import load_dotenv
 
-Base = declarative_base()
+# Local imports
+from app.models import FunctionDef, FunctionSummary
+
+#
+
+load_dotenv()
+
+DB_PATH = os.getenv("DB_PATH")
+
+#
 
 
-class Function(Base):
-    __tablename__ = "functions"
+def db_add_function(function: FunctionDef) -> bool:
+    """
+    Add a function to the database.
 
-    id = Column(Integer, primary_key=True)
-    name = Column(String, unique=True, index=True)
-    code = Column(String)
-    description = Column(String)
-    dependencies = Column(String, nullable=True)
-    args = Column(PickleType, nullable=True)  # Use PickleType instead of JSON
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    Args:
+        function (FunctionDef): The function to be added.
 
-    @property
-    def dependencies_list(self):
-        if self.dependencies:
-            return self.dependencies.split(",")
-        return []
-
-    @dependencies_list.setter
-    def dependencies_list(self, dependencies):
-        if dependencies:
-            self.dependencies = ",".join(dependencies)
+    Returns:
+        bool: True if the function is added as a new entry, False if it updates an existing entry.
+    """
+    with shelve.open(DB_PATH) as db:
+        existing_function = db.get(function.name)
+        if existing_function:
+            function.updated_at = datetime.datetime.utcnow()
+            db[function.name] = function
+            return False
         else:
-            self.dependencies = None
-
-    def to_dict(self):
-        return {
-            "id": self.id,
-            "name": self.name,
-            "code": self.code,
-            "description": self.description,
-            "dependencies": self.dependencies_list,
-            "args": dict(self.args),
-            "created_at": self.created_at,
-            "updated_at": self.updated_at,
-        }
+            function.created_at = datetime.datetime.utcnow()
+            db[function.name] = function
+            return True
 
 
-DATABASE_URL = "sqlite:///./sql_app.db"
+def db_get_function(name: str) -> FunctionDef | None:
+    """
+    Get a function from the database.
 
-engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    Args:
+        name (str): The name of the function to get.
 
-Base.metadata.create_all(bind=engine)
-
-
-def add_function(db: Session, function: FunctionSubmission) -> Function:
-    function_dict = function.model_dump()
-    function_dict["dependencies_list"] = function_dict.pop("dependencies")
-    existing_function = (
-        db.query(Function).filter(Function.name == function_dict["name"]).first()
-    )
-    if existing_function:
-        for key, value in function_dict.items():
-            setattr(existing_function, key, value)
-        db.commit()
-        db.refresh(existing_function)
-        return existing_function
-    else:
-        function = Function(**function_dict)
-
-        db.add(function)
-        db.commit()
-        db.refresh(function)
+    Returns:
+        FunctionDef | None: The function if it exists, None otherwise.
+    """
+    with shelve.open(DB_PATH) as db:
+        function = db.get(name)
         return function
 
 
-def get_function(db: Session, name: str):
-    function = db.query(Function).where(Function.name == name).first()
-    return function
+def db_get_functions(names: list[str]) -> list[FunctionDef]:
+    """
+    Get a list of functions from the database.
+
+    Args:
+        names (list[str]): A list of function names to get.
+
+    Returns:
+        list[FunctionDef]: A list of functions.
+
+    Raises:
+        ValueError: If any of the names are missing in the database.
+    """
+    with shelve.open(DB_PATH) as db:
+        functions = [db.get(name) for name in names]
+        if None in functions:
+            missing_names = [
+                name for name, function in zip(names, functions) if function is None
+            ]
+            raise ValueError(
+                f"The following names are missing in the database: {missing_names}"
+            )
+        return functions
 
 
-def get_all_functions(db: Session):
-    functions = db.query(Function).all()
-    return functions
+def db_get_all_function_summaries() -> list[FunctionSummary]:
+    """
+    Get all function summaries from the database.
+
+    Returns:
+        list[FunctionSummary]: A list of all functions.
+
+    Raises:
+        FileNotFoundError: If the database file is not found.
+    """
+    with shelve.open(DB_PATH) as db:
+        functions = list(db.values())
+        return [
+            FunctionSummary(
+                name=f.name,
+                description=f.description,
+            )
+            for f in functions
+        ]
+
+
+def db_get_all_functions() -> list[FunctionDef]:
+    """
+    Get all functions from the database.
+
+    Returns:
+        list[FunctionDef]: A list of all functions.
+    """
+    with shelve.open(DB_PATH) as db:
+        functions = list(db.values())
+        return functions

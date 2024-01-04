@@ -1,42 +1,51 @@
+# System imports
 import subprocess
 
+# Local imports
+from app.db import db_get_functions
+from app.models import Arg, FunctionDef
 
-def install_dependencies(dependencies: list[str]):
+#
+
+
+def exec_install_dependencies(dependencies: list[str]) -> None:
+    """
+    Install the specified dependencies using pip.
+
+    Args:
+        dependencies (list[str]): A list of dependencies to be installed.
+
+    Raises:
+        CalledProcessError: If the installation process fails.
+
+    Returns:
+        None
+    """
     for dependency in dependencies:
         subprocess.check_call(["python3", "-m", "pip", "install", dependency])
 
 
-def execute_code(code: str, name: str, args: dict[str, any]):
+def exec_execute_code(
+    fn: FunctionDef,
+    args: list[Arg] | None = None,
+) -> any:
+    """
+    Executes the given function `fn` with the provided arguments `args`.
+
+    Args:
+        fn (FunctionDef): The function to be executed.
+        args (list[Arg]): The arguments to be passed to the function.
+
+    Returns:
+        any: The result of executing the function.
+    """
+
+    def _include_dependent_functions(_fn, _namespace) -> None:
+        for dep_fn in db_get_functions(_fn.fn_dependencies):
+            _include_dependent_functions(dep_fn, _namespace)
+        exec(_fn.code, _namespace)
+
     namespace = {}
-    exec(code, namespace)
-
-    return namespace[name](**args)
-
-
-if __name__ == "__main__":
-    install_dependencies(["numpy", "pandas"])
-
-    code = """
-import numpy as np
-import pandas as pd
-
-def generate_random_dataframe(count, min_value, max_value):
-	data = pd.DataFrame({'A': np.random.uniform(min_value, max_value, count)})
-	return data
-
-def calculate_mean(dataframe, column):
-	return np.mean(dataframe[column])
-
-def my_function(
-	count: int,
-    min_value: float,
-    max_value: float,
-    ) -> float:
-	data = generate_random_dataframe(count, min_value, max_value)
-	mean = calculate_mean(data, 'A')
-	return mean
-"""
-
-    args = {"count": 10, "min_value": 0.0, "max_value": 100.0}
-    result = execute_code(code, "my_function", args)
-    print(result)
+    _include_dependent_functions(fn, namespace)
+    actual_args = {arg.name: arg.value for arg in args} if args else None
+    return namespace[fn.name](**actual_args) if actual_args else namespace[fn.name]()

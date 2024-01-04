@@ -1,44 +1,117 @@
-from fastapi import FastAPI, Request, Response
+# System imports
+from typing import Dict, Any
 
-from app.models import FunctionSubmission, FunctionExecution
-from app.db import SessionLocal, add_function, get_function, get_all_functions
-from app.exec import execute_code, install_dependencies
+# Third-party imports
+from fastapi import FastAPI, Response
+from fastapi.middleware.cors import CORSMiddleware
 
-# Create FastAPI instance
+# Local imports
+from app.db import (
+    db_add_function,
+    db_get_function,
+    db_get_all_functions,
+    db_get_all_function_summaries,
+)
+from app.exec import exec_execute_code, exec_install_dependencies
+from app.models import Arg, FunctionDef, FunctionSummary
+
+#
+
 app = FastAPI()
 
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://127.0.0.1:5173"],  # Allow this origin
+    allow_credentials=True,  # Allow cookies to be sent with requests
+    allow_methods=["*"],  # Allow all methods
+    allow_headers=["*"],  # Allow all headers
+)
 
-# Middleware for handling db sessions
-@app.middleware("http")
-async def db_session_middleware(request: Request, call_next):
-    response = Response("Internal server error", status_code=500)
-    try:
-        request.state.db = SessionLocal()
-        response = await call_next(request)
-    finally:
-        request.state.db.close()
-    return response
+#
 
 
 @app.post("/functions/")
-def submit_function(function: FunctionSubmission, request: Request):
-    db = request.state.db
-    fn = add_function(db, function)
-    install_dependencies(fn.dependencies_list)
-    return fn
+def submit_function(fn: FunctionDef) -> Response:
+    """
+    Submit a function definition and process it.
 
+    Args:
+        fn (FunctionDef): The function definition to submit.
 
-@app.post("/execute/")
-def execute_function(function: FunctionExecution, request: Request):
-    db = request.state.db
-    fn = get_function(db, function.name)
-    exec_result = execute_code(fn.code, fn.name, function.args)
-    return exec_result
+    Returns:
+        Response: The HTTP response indicating the status of the submission.
+    """
+    is_new = db_add_function(fn)
+    exec_install_dependencies(fn.pkg_dependencies)
+    if is_new:
+        return Response(status_code=201)
+    else:
+        return Response(status_code=200)
 
 
 @app.get("/functions/")
-def get_functions(request: Request) -> list[FunctionSubmission]:
-    db = request.state.db
-    db_fns = get_all_functions(db)
-    fns = [FunctionSubmission(**fn.to_dict()) for fn in db_fns]
+def get_functions() -> list[FunctionDef]:
+    """
+    Retrieve all functions.
+
+    Returns:
+        list[FunctionDef]: A list of FunctionDef objects representing the functions.
+    """
+    fns = db_get_all_functions()
     return fns
+
+
+@app.get("/functions/summaries")
+def get_functions_summaries() -> list[FunctionSummary]:
+    """
+    Retrieve summaries of all functions.
+
+    Returns:
+        list[FunctionSummary]: A list of function summaries.
+    """
+    summaries = db_get_all_function_summaries()
+    return summaries
+
+
+@app.get("/functions/{name}")
+def get_function(name: str) -> FunctionDef:
+    """
+    Retrieve a function by name.
+
+    Args:
+        name (str): The name of the function.
+
+    Returns:
+        FunctionDef: The function definition.
+    """
+    fn = db_get_function(name)
+    if fn is None:
+        return Response(status_code=404)
+    print(fn)
+    return fn
+
+
+@app.post("/functions/{name}/execute/")
+def execute_function(
+    name: str,
+    args: list[Arg] | None = None,
+) -> Dict[str, Any]:
+    """
+    Executes a function based on the provided FunctionExec object.
+
+    Args:
+        name (str): The name of the function.
+        args (Arg): The Arg object containing the function arguments.
+
+    Returns:
+        Response: The response object indicating the status code and execution result.
+    """
+    fn_def = db_get_function(name)
+    if fn_def is None:
+        return Response(status_code=404)
+    exec_result = exec_execute_code(
+        fn=fn_def,
+        args=args,
+    )
+    return exec_result
