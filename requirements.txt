@@ -1,3 +1,4 @@
+chromadb
 fastapi
-uvicorn
 python-dotenv
+uvicorn

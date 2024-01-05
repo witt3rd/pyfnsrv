@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, List, Dict
+from typing import Any, List, Dict, Optional
 from pydantic import BaseModel, Field
 
 
@@ -28,3 +28,8 @@ class FunctionDef(BaseModel):
 class FunctionSummary(BaseModel):
     name: str
     description: str
+
+
+class Query(BaseModel):
+    query: str
+    n_results: Optional[int] = 10

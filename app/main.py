@@ -11,9 +11,10 @@ from app.db import (
     db_get_function,
     db_get_all_functions,
     db_get_all_function_summaries,
+    db_find_functions,
 )
 from app.exec import exec_execute_code, exec_install_dependencies
-from app.models import Arg, FunctionDef, FunctionSummary
+from app.models import Arg, FunctionDef, FunctionSummary, Query
 
 #
 
@@ -90,6 +91,21 @@ def get_function(name: str) -> FunctionDef:
         return Response(status_code=404)
     print(fn)
     return fn
+
+
+@app.post("/functions/search")
+def search_functions(query: Query) -> list[FunctionSummary]:
+    """
+    Searches for functions based on the provided query string and number of results.
+
+    Args:
+        query (Query): The Query object containing the search string and number of results.
+
+    Returns:
+        Response: The response object indicating the status code and search results.
+    """
+    results = db_find_functions(query.query, query.n_results)
+    return results
 
 
 @app.post("/functions/{name}/execute/")
